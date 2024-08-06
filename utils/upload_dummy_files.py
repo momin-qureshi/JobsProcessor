@@ -1,18 +1,19 @@
 import argparse
 import random
-
+import logging
 import boto3
 import redis
-
 from generate_json import generate_jsonl_content
-
 
 REDIS_HOST = "localhost"
 REDIS_PORT = 6379
 
-
 # Initialize Redis client
 cache = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+
+# Initialize logging
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
 
 
 def get_last_index():
@@ -33,13 +34,13 @@ def upload_text_to_s3(bucket_name, folder_name, texts, start_index):
 
             # Upload the text
             s3_client.put_object(Bucket=bucket_name, Key=s3_key, Body=text)
-            print(f"Uploaded text to s3://{bucket_name}/{s3_key}")
+            logger.info(f"Uploaded text to s3://{bucket_name}/{s3_key}")
 
             # Increment the index
             current_index += 1
 
         except Exception as e:
-            print(f"Failed to upload text to {s3_key}: {str(e)}")
+            logger.error(f"Failed to upload text to {s3_key}: {str(e)}")
 
     return current_index
 

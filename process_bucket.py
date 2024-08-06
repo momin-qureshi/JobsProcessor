@@ -1,18 +1,21 @@
-import os
 import json
-from concurrent.futures import ThreadPoolExecutor
 import logging
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import boto3
 import grpc
 import redis
 import yaml
 from dotenv import load_dotenv
+
 from grpc_server import SeniorityModelStub, SeniorityRequest, SeniorityRequestBatch
 
 load_dotenv()  # Load variables from .env file
 
 REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PORT = os.getenv("REDIS_PORT")
+REDIS_DB = os.getenv("REDIS_DB")
 
 with open("config.yaml", "r") as file:
     config = yaml.safe_load(file)
@@ -26,7 +29,7 @@ MOD_PREFIX = config["mod_prefix"]
 s3 = boto3.client("s3")
 
 # Initialize Redis client
-cache = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+cache = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
 
 # Configure logging
 logging.basicConfig(
@@ -34,18 +37,7 @@ logging.basicConfig(
 )
 
 
-def infer_seniorities(postings):
-    seniority_misses = set()
-    seniorities = [None] * len(postings)
-    for i, posting in enumerate(postings):
-        company = posting["company"]
-        title = posting["title"]
-        cache_key = f"{company}:{title}"
-        seniority = cache.get(cache_key)
-        if seniority:
-            seniorities[i] = str(seniority)
-        else:
-            seniority_misses.add(i)
+def fetch_seniority(postings, seniority_misses):
     try:
         with grpc.insecure_channel("localhost:50051") as channel:
             stub = SeniorityModelStub(channel)
@@ -60,15 +52,30 @@ def infer_seniorities(postings):
                 ]
             )
             response = stub.InferSeniority(request_batch)
-            for res in response.batch:
-                seniorities[res.uuid] = res.seniority
-                cache_key = (
-                    f"{postings[res.uuid]['company']}:{postings[res.uuid]['title']}"
-                )
-                cache.set(cache_key, res.seniority)
+            return response.batch
+
     except grpc.RpcError as e:
         logging.error(f"Failed to connect to the gRPC server: {e}")
         return []
+
+
+def infer_seniorities(postings):
+    seniority_misses = set()
+    seniorities = [None] * len(postings)
+    for i, posting in enumerate(postings):
+        company = posting["company"]
+        title = posting["title"]
+        cache_key = f"{company}:{title}"
+        seniority = cache.get(cache_key)
+        if seniority:
+            seniorities[i] = str(seniority)
+        else:
+            seniority_misses.add(i)
+
+    for res in fetch_seniority(postings, seniority_misses):
+        seniorities[res.uuid] = res.seniority
+        cache_key = f"{postings[res.uuid]['company']}:{postings[res.uuid]['title']}"
+        cache.set(cache_key, res.seniority)
 
     return seniorities
 
@@ -104,11 +111,10 @@ def process_file(key):
 
 
 def get_all_unprocessed_keys(first_key: int = 0) -> list:
-    keys = []
     response = s3.list_objects_v2(
         Bucket=INPUT_BUCKET, Prefix=RAW_PREFIX, StartAfter=f"{RAW_PREFIX}{first_key}"
     )
-    keys += [item["Key"] for item in response.get("Contents", [])]
+    keys = [item["Key"] for item in response.get("Contents", [])]
     if response["IsTruncated"]:
         first_key = keys[-1]
         keys += get_all_unprocessed_keys(first_key)
@@ -121,10 +127,15 @@ def main():
     keys = get_all_unprocessed_keys(int(last_key) + 1)
     # Process files concurrently
     with ThreadPoolExecutor(max_workers=10) as executor:
-        results = list(executor.map(process_file, keys))
-        if not all(results):
-            logging.error("Some files failed to process")
-            logging.error([i for i, res in enumerate(results) if not res])
+        future_to_key = {executor.submit(process_file, key): key for key in keys}
+        for future in as_completed(future_to_key):
+            key = future_to_key[future]
+            try:
+                result = future.result()
+                if not result:
+                    logging.error(f"Failed to process file: {key}")
+            except Exception as e:
+                logging.error(f"Exception processing file {key}: {e}")
 
     if keys:
         last_key = keys[-1].split("/")[-1].split(".")[0]
