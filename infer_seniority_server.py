@@ -1,7 +1,10 @@
+import os
 from concurrent import futures
 from random import randint
 
 import grpc
+
+from dotenv import load_dotenv
 
 from grpc_server import (
     SeniorityModelServicer,
@@ -9,6 +12,9 @@ from grpc_server import (
     SeniorityResponseBatch,
     add_SeniorityModelServicer_to_server,
 )
+
+load_dotenv()
+GRPC_SERVER_ADDRESS = os.getenv("GRPC_SERVER_ADDRESS")
 
 
 class SeniorityModelServicer(SeniorityModelServicer):
@@ -23,7 +29,7 @@ class SeniorityModelServicer(SeniorityModelServicer):
 def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     add_SeniorityModelServicer_to_server(SeniorityModelServicer(), server)
-    server.add_insecure_port("[::]:50051")
+    server.add_insecure_port(GRPC_SERVER_ADDRESS)
     server.start()
     server.wait_for_termination()
 

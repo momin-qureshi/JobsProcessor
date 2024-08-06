@@ -1,5 +1,7 @@
 import argparse
 import random
+from datetime import datetime
+
 import logging
 import boto3
 import redis
@@ -18,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def get_last_index():
     """Read the last index from the cache."""
-    return cache.get("last_key") or -1
+    return cache.get("last_key") or int(datetime.now().timestamp())
 
 
 def upload_text_to_s3(bucket_name, folder_name, texts, start_index):
