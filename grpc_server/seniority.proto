@@ -1,0 +1,77 @@
+syntax = "proto3";
+/**
+ * @file seniority.proto
+ *
+ * @brief This file defines the SeniorityModel service which provides a method for inferring seniority based on a batch of requests.
+ */
+
+/**
+ * @brief The SeniorityModel service.
+ *
+ * This service provides a method for inferring seniority based on a batch of requests.
+ */
+service SeniorityModel {
+    /**
+     * @brief Infers seniority based on a batch of requests.
+     *
+     * This method takes a batch of SeniorityRequest messages and returns a batch of SeniorityResponse messages.
+     *
+     * @param request The batch of SeniorityRequest messages.
+     * @return The batch of SeniorityResponse messages.
+     */
+    rpc InferSeniority (SeniorityRequestBatch) returns (SeniorityResponseBatch);
+}
+
+/**
+ * @brief A batch of SeniorityRequest messages.
+ *
+ * This message contains a repeated field of SeniorityRequest messages.
+ */
+message SeniorityRequestBatch {
+    repeated SeniorityRequest batch = 1;
+}
+
+/**
+ * @brief A single SeniorityRequest message.
+ *
+ * This message contains information about a single request for inferring seniority.
+ */
+message SeniorityRequest {
+    /**
+     * @brief The UUID of the request.
+     */
+    int32 uuid = 1;
+    /**
+     * @brief The company name.
+     */
+    string company = 2;
+    /**
+     * @brief The job title.
+     */
+    string title = 3;
+}
+
+/**
+ * @brief A batch of SeniorityResponse messages.
+ *
+ * This message contains a repeated field of SeniorityResponse messages.
+ */
+message SeniorityResponseBatch {
+    repeated SeniorityResponse batch = 1;
+}
+
+/**
+ * @brief A single SeniorityResponse message.
+ *
+ * This message contains the UUID of the request and the inferred seniority level.
+ */
+message SeniorityResponse {
+    /**
+     * @brief The UUID of the request.
+     */
+    int32 uuid = 1;
+    /**
+     * @brief The inferred seniority level.
+     */
+    int32 seniority = 2;
+}

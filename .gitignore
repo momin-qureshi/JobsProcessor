@@ -1,0 +1,22 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+
+
+# gRPC generated files
+*_pb2.py
+*_pb2_grpc.py
+
+# Unit test / coverage reports
+.coverage
+*.log
+
+# IDE specific files
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
