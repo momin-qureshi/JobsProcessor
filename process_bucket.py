@@ -1,15 +1,13 @@
 import os
 import json
 from concurrent.futures import ThreadPoolExecutor
-
+import logging
 import boto3
 import grpc
 import redis
 import yaml
 from dotenv import load_dotenv
-
 from grpc_server import SeniorityModelStub, SeniorityRequest, SeniorityRequestBatch
-
 
 load_dotenv()  # Load variables from .env file
 
@@ -24,52 +22,85 @@ OUTPUT_BUCKET = config["output_bucket"]
 RAW_PREFIX = config["raw_prefix"]
 MOD_PREFIX = config["mod_prefix"]
 
-
 # Initialize S3 client
 s3 = boto3.client("s3")
 
 # Initialize Redis client
 cache = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=0)
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-def infer_seniority(company, title):
-    with grpc.insecure_channel("localhost:50051") as channel:
-        stub = SeniorityModelStub(channel)
-        request_batch = SeniorityRequestBatch(
-            batch=[
-                SeniorityRequest(uuid=1, company="CompanyA", title="Engineer"),
-                SeniorityRequest(uuid=2, company="CompanyB", title="Senior Engineer"),
-            ]
-        )
-        response = stub.InferSeniority(request_batch)
-        for res in response.batch:
-            print(f"UUID: {res.uuid}, Seniority: {res.seniority}")
+
+def infer_seniorities(postings):
+    seniority_misses = set()
+    seniorities = [None] * len(postings)
+    for i, posting in enumerate(postings):
+        company = posting["company"]
+        title = posting["title"]
+        cache_key = f"{company}:{title}"
+        seniority = cache.get(cache_key)
+        if seniority:
+            seniorities[i] = str(seniority)
+        else:
+            seniority_misses.add(i)
+    try:
+        with grpc.insecure_channel("localhost:50051") as channel:
+            stub = SeniorityModelStub(channel)
+            request_batch = SeniorityRequestBatch(
+                batch=[
+                    SeniorityRequest(
+                        uuid=i,
+                        company=postings[i]["company"],
+                        title=postings[i]["title"],
+                    )
+                    for i in seniority_misses
+                ]
+            )
+            response = stub.InferSeniority(request_batch)
+            for res in response.batch:
+                seniorities[res.uuid] = res.seniority
+                cache_key = (
+                    f"{postings[res.uuid]['company']}:{postings[res.uuid]['title']}"
+                )
+                cache.set(cache_key, res.seniority)
+    except grpc.RpcError as e:
+        logging.error(f"Failed to connect to the gRPC server: {e}")
+        return []
+
+    return seniorities
 
 
 def process_file(key):
-    print(f"Processing file: {key}")
+    logging.info(f"Processing file: {key}")
     obj = s3.get_object(Bucket=INPUT_BUCKET, Key=key)
     raw_data = obj["Body"].read().decode("utf-8").splitlines()
 
-    augmented_data = []
+    # Convert each line to a JSON object
+    postings = [json.loads(line) for line in raw_data]
 
-    for line in raw_data:
-        job_posting = json.loads(line)
-        company = job_posting["company"]
-        title = job_posting["title"]
+    # Infer seniority for each job posting
+    seniorities = infer_seniorities(postings)
+    if not seniorities:
+        logging.error(f"Failed to infer seniorities for file: {key}")
+        return False
 
-        cache_key = f"{company}:{title}"
-        seniority = cache.get(cache_key)
+    # Prepare the augmented data by adding the seniority to each job posting
+    augmented_data = [
+        {**posting, "seniority": seniority}
+        for posting, seniority in zip(postings, seniorities)
+    ]
 
-        if seniority is None:
-            seniority = infer_seniority(company, title)
-            cache.set(cache_key, seniority)
+    # Convert the augmented data to JSON strings
+    augmented_data = [json.dumps(posting) for posting in augmented_data]
 
-        job_posting["seniority"] = int(seniority)
-        augmented_data.append(json.dumps(job_posting))
-
+    # Upload the augmented data to S3
     output_key = MOD_PREFIX + key.split("/")[-1]
     s3.put_object(Bucket=OUTPUT_BUCKET, Key=output_key, Body="\n".join(augmented_data))
+    logging.info(f"DONE: Uploaded augmented data to s3://{OUTPUT_BUCKET}/{output_key}")
+    return True
 
 
 def get_all_unprocessed_keys(first_key: int = 0) -> list:
@@ -90,7 +121,10 @@ def main():
     keys = get_all_unprocessed_keys(int(last_key) + 1)
     # Process files concurrently
     with ThreadPoolExecutor(max_workers=10) as executor:
-        executor.map(process_file, keys)
+        results = list(executor.map(process_file, keys))
+        if not all(results):
+            logging.error("Some files failed to process")
+            logging.error([i for i, res in enumerate(results) if not res])
 
     if keys:
         last_key = keys[-1].split("/")[-1].split(".")[0]
