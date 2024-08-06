@@ -72,14 +72,25 @@ def infer_seniorities(cache: redis.client.Redis, postings: List[Dict]) -> List[s
         # Append the seniority to the list if it is found in the cache, otherwise add to seniority_misses
         seniority = cache.get(cache_key)
         if seniority:
-            seniorities[i] = str(seniority)
+            seniorities[i] = int(seniority)
         else:
             seniority_misses.add(i)
 
+    # If all seniorities are found in the cache, return the list
+    if not seniority_misses:
+        return seniorities
+
     # Fetch the seniority for the job postings that were not found in the cache
-    for res in fetch_seniority(postings, seniority_misses):
+    seniority_results = fetch_seniority(postings, seniority_misses)
+
+    # If no results are returned and there are misses, return an empty list
+    if not seniority_results:
+        return []
+
+    # Update the seniorities based on the results
+    for res in seniority_results:
         # Update the seniority for the job posting
-        seniorities[res.uuid] = res.seniority
+        seniorities[res.uuid] = int(res.seniority)
         # Cache the seniority
         cache_key = (
             f"{postings[res.uuid].get('company')}:{postings[res.uuid].get('title')}"

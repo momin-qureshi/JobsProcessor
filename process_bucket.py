@@ -47,7 +47,6 @@ def process_file(key: str) -> List[bool]:
     Returns:
         List[bool]: A list of boolean values indicating the success of the file processing.
     """
-    logging.info(f"Processing file: {key}")
 
     # Retrieve the raw data from S3
     obj = s3.get_object(Bucket=INPUT_BUCKET, Key=key)
@@ -59,7 +58,6 @@ def process_file(key: str) -> List[bool]:
     # Infer seniority for each job posting
     seniorities = infer_seniorities(cache, postings)
     if not seniorities:
-        logging.error(f"Failed to infer seniorities for file: {key}")
         return False
 
     # Prepare the augmented data by adding the seniority to each job posting
@@ -74,8 +72,6 @@ def process_file(key: str) -> List[bool]:
     # Upload the augmented data to S3
     output_key = MOD_PREFIX + key.split("/")[-1]
     s3.put_object(Bucket=OUTPUT_BUCKET, Key=output_key, Body="\n".join(augmented_data))
-
-    logging.info(f"DONE: Uploaded augmented data to s3://{OUTPUT_BUCKET}/{output_key}")
 
     # Return True if the file was processed successfully
     return True
@@ -126,7 +122,9 @@ def main():
             key = future_to_key[future]
             try:
                 result = future.result()
-                if not result:
+                if result:
+                    logging.info(f"DONE: Uploaded augmented data for {key}")
+                else:
                     logging.error(f"Failed to process file: {key}")
             except Exception as e:
                 logging.error(f"Exception processing file {key}: {e}")
