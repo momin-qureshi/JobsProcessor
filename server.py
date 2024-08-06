@@ -1,6 +1,8 @@
 from concurrent import futures
-import grpc
 from random import randint
+
+import grpc
+
 from grpc_server import (
     SeniorityModelServicer,
     SeniorityResponse,

@@ -1,8 +1,10 @@
+import argparse
+import random
+
 import boto3
 import redis
-import argparse
+
 from generate_json import generate_jsonl_content
-import random
 
 
 REDIS_HOST = "localhost"

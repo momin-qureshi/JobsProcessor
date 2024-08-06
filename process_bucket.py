@@ -1,15 +1,29 @@
-import boto3
+import os
 import json
-import redis
 from concurrent.futures import ThreadPoolExecutor
 
-# Configuration
-INPUT_BUCKET = "momin-rl-data"
-OUTPUT_BUCKET = "momin-rl-data"
-RAW_PREFIX = "job-postings-raw/"
-MOD_PREFIX = "job-postings-mod/"
-REDIS_HOST = "localhost"
-REDIS_PORT = 6379
+import boto3
+import grpc
+import redis
+import yaml
+from dotenv import load_dotenv
+
+from grpc_server import SeniorityModelStub, SeniorityRequest, SeniorityRequestBatch
+
+
+load_dotenv()  # Load variables from .env file
+
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = os.getenv("REDIS_PORT")
+
+with open("config.yaml", "r") as file:
+    config = yaml.safe_load(file)
+
+INPUT_BUCKET = config["input_bucket"]
+OUTPUT_BUCKET = config["output_bucket"]
+RAW_PREFIX = config["raw_prefix"]
+MOD_PREFIX = config["mod_prefix"]
+
 
 # Initialize S3 client
 s3 = boto3.client("s3")
@@ -19,7 +33,17 @@ cache = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=0)
 
 
 def infer_seniority(company, title):
-    return 3  # Placeholder value
+    with grpc.insecure_channel("localhost:50051") as channel:
+        stub = SeniorityModelStub(channel)
+        request_batch = SeniorityRequestBatch(
+            batch=[
+                SeniorityRequest(uuid=1, company="CompanyA", title="Engineer"),
+                SeniorityRequest(uuid=2, company="CompanyB", title="Senior Engineer"),
+            ]
+        )
+        response = stub.InferSeniority(request_batch)
+        for res in response.batch:
+            print(f"UUID: {res.uuid}, Seniority: {res.seniority}")
 
 
 def process_file(key):

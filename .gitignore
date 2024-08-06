@@ -5,6 +5,11 @@ __pycache__/
 # Virtual environment
 venv/
 
+# Environment variables
+.env
+
+# Config file
+config.yaml
 
 # gRPC generated files
 *_pb2.py
