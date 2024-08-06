@@ -13,7 +13,10 @@ This project is designed to infer the seniorities of job postings based on the c
 ## Installation
 
 1. **Clone the repository:**
-    This repository is not available remotely, so you will need to clone it locally.
+
+    ```sh
+    git clone git@github.com:momin-qureshi/JobsProcessor.git
+    ```
 
 2. **Create a virtual environment:**
 
