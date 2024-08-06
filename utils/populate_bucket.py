@@ -1,14 +1,23 @@
+import os
 import argparse
+import logging
 import random
 from datetime import datetime
+from typing import List
 
-import logging
 import boto3
 import redis
 from generate_json import generate_jsonl_content
+from dotenv import load_dotenv
 
-REDIS_HOST = "localhost"
-REDIS_PORT = 6379
+
+load_dotenv()  # Load variables from .env file
+
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = os.getenv("REDIS_PORT")
+REDIS_DB = os.getenv("REDIS_DB")
+GRPC_SERVER_ADDRESS = os.getenv("GRPC_SERVER_ADDRESS")
+
 
 # Initialize Redis client
 cache = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=0)
@@ -18,16 +27,30 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
-def get_last_index():
+def get_last_index() -> float | bytes | None:
     """Read the last index from the cache."""
-    return cache.get("last_key") or int(datetime.now().timestamp())
+    return cache.get("last_key") or datetime.now().timestamp()
 
 
-def upload_text_to_s3(bucket_name, folder_name, texts, start_index):
+def upload_text_to_s3(
+    bucket_name: str, folder_name: str, texts: List[str], start_index: int
+):
+    """
+    Uploads a list of texts to an S3 bucket.
+    Args:
+        bucket_name (str): The name of the S3 bucket.
+        folder_name (str): The name of the folder within the bucket.
+        texts (List[str]): A list of texts to be uploaded.
+        start_index (int): The starting index for the S3 key.
+    Returns:
+        int: The current index after uploading all the texts.
+    Raises:
+        Exception: If there is an error while uploading a text.
+    """
     # Initialize the S3 client
     s3_client = boto3.client("s3")
 
-    current_index = int(start_index) + 1
+    current_index = start_index + 1
 
     for text in texts:
         try:
@@ -47,7 +70,7 @@ def upload_text_to_s3(bucket_name, folder_name, texts, start_index):
     return current_index
 
 
-def generate_dummy_texts(n):
+def generate_dummy_texts(n: int) -> List[str]:
     """Generate a list of dummy texts."""
     return [generate_jsonl_content(random.randint(1, 10)) for _ in range(n)]
 
@@ -73,4 +96,4 @@ if __name__ == "__main__":
     last_index = get_last_index()
 
     # Upload the texts and get the new last index
-    new_last_index = upload_text_to_s3(bucket_name, folder_name, texts, last_index)
+    new_last_index = upload_text_to_s3(bucket_name, folder_name, texts, int(last_index))

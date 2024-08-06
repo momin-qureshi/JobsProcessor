@@ -107,6 +107,14 @@ Several design considerations were made to optimize the performance of the syste
 - A system was implemented to ensure that old files are not reprocessed by keeping track of the last processed timestamp.
 - Careful considerations have been made to avoid multiple parses over the same data by using sets to directly access the required job postings.
 
+## Architecture
+
+The system is designed to process job postings in a scalable and efficient manner. The following considerations were made in the design:
+
+- **Functional components**: The system is divided into functional components, such as the gRPC server, the main processing script, and the utility scripts. This modular design allows for easy maintenance and scalability. Steps have been taken to remove side effects and ensure that each component is responsible for a specific task.
+- **Simplicity and readability**: The code is designed to be simple and lightweight. Over-engineering has been avoided to ensure that the system is easy to understand and maintain.
+- **Scalability**: The system is designed to handle large amounts of data efficiently. Multithreading is used to process multiple files concurrently, and Redis is used as a caching service to store and retrieve seniority information quickly.
+- **Utility Scripts**: Utility scripts have been provided to simulate the process of populating the S3 bucket with raw job postings, and simulating the gRPC server. These scripts are designed to help test the system and ensure that it is working as expected.
 
 ## Performance
 
@@ -120,6 +128,12 @@ An estimated 2GB is a reasonable sized data for Redis to handle. The system shou
 
 ## Testing
 
+The project contains unit tests to ensure the correctness of the system. You can run the tests using the following command:
+
+```sh
+pytest
+```
+
 ## Contact
 
-For any questions or issues, please contact [mominuhh@gmail.com]
+For any questions or issues, please contact <mominuhh@gmail.com>.
